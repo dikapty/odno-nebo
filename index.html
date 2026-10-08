@@ -88,16 +88,20 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
    ВАЖНО: SVG feTurbulence и mix-blend-mode в этом слое заставляют браузер
    перерисовывать шум поверх canvas каждый кадр: замер на 4x-замедленном CPU
    дал 0.9-2 fps вместо 60. Поэтому вместо шума — статичный градиент. */
+/* Мягкая световая атмосфера без белой пелены.
+   Белые засветки (255,255,255,.026 и .020) ровно подсвечивали всё небо
+   серой дымкой и гасили контраст звёзд — убраны. Остался только тёплый
+   оттенок сверху и мягкое затемнение по краям. */
 .grain{
   position:fixed;inset:0;z-index:60;pointer-events:none;
   background:
-    radial-gradient(60% 45% at 22% 18%,rgba(255,255,255,.026),transparent 70%),
-    radial-gradient(55% 40% at 78% 72%,rgba(255,255,255,.020),transparent 70%),
-    radial-gradient(70% 50% at 50% 50%,rgba(0,0,0,.16),transparent 78%);
+    radial-gradient(65% 48% at 24% 16%,rgba(232,199,102,.030),transparent 72%),
+    radial-gradient(58% 42% at 76% 74%,rgba(143,108,255,.028),transparent 72%),
+    radial-gradient(78% 56% at 50% 50%,rgba(0,0,0,.20),transparent 80%);
   will-change:transform;transform:translateZ(0);
 }
 .vig{position:fixed;inset:0;z-index:55;pointer-events:none;
-  background:radial-gradient(120% 90% at 50% 40%,transparent 40%,rgba(0,0,0,.5) 100%);
+  background:radial-gradient(128% 96% at 50% 42%,transparent 48%,rgba(0,0,0,.42) 100%);
   will-change:transform;transform:translateZ(0)}
 
 /* типографика */
@@ -338,11 +342,18 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
   font-size:.56rem;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-faint);
   opacity:0;transition:opacity 1.8s ease .9s;pointer-events:none}
 #sunDiff.in{opacity:.72}
+/* Линия, где встречаются два неба.
+   Была чисто белой (#fff) с широким свечением — на тёмном фоне читалась
+   жёстким белым штрихом. Теперь это тонкая тёплая нить: светится мягко,
+   к краям растворяется, а в середине — маленькая точка-сердце. */
 .horizon{position:absolute;top:0;bottom:0;left:50%;width:1px;z-index:4;transform:translateX(-.5px);
-  background:linear-gradient(180deg,transparent,rgba(255,255,255,.42) 26%,#fff 50%,rgba(255,255,255,.42) 74%,transparent);
-  box-shadow:0 0 22px 2px rgba(255,255,255,.32)}
-.horizon::after{content:"";position:absolute;top:50%;left:50%;width:7px;height:7px;border-radius:50%;
-  transform:translate(-50%,-50%);background:#fff;box-shadow:0 0 20px 6px rgba(255,255,255,.7);
+  background:linear-gradient(180deg,transparent,rgba(232,199,102,.10) 18%,rgba(244,241,234,.34) 40%,
+    rgba(255,236,190,.52) 50%,rgba(244,241,234,.34) 60%,rgba(232,199,102,.10) 82%,transparent);
+  box-shadow:0 0 14px rgba(232,199,102,.18)}
+.horizon::after{content:"";position:absolute;top:50%;left:50%;width:5px;height:5px;border-radius:50%;
+  transform:translate(-50%,-50%);
+  background:radial-gradient(circle,rgba(255,246,224,.95),rgba(232,199,102,.55) 60%,rgba(232,199,102,0));
+  box-shadow:0 0 12px 2px rgba(232,199,102,.30);
   animation:pulseDot 3.4s ease-in-out infinite}
 @keyframes pulseDot{0%,100%{transform:translate(-50%,-50%) scale(1);opacity:.9}
   50%{transform:translate(-50%,-50%) scale(1.9);opacity:.35}}
@@ -733,10 +744,13 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
   };
   /* данные для подписи: имя, приблизительная яркость, цвет */
   var PLANET_INFO = {
-    venus:   { name: 'Венера',  mag: -4.2, rgb: [255, 248, 226] },
-    jupiter: { name: 'Юпитер',  mag: -2.2, rgb: [255, 238, 205] },
-    saturn:  { name: 'Сатурн',  mag:  0.6, rgb: [255, 232, 190] },
-    mars:    { name: 'Марс',    mag:  1.0, rgb: [255, 190, 150] }
+    /* Цвета подобраны так, чтобы планета читалась яркой, но не белой:
+       в режиме сложения прежние почти-белые значения упирались в 255
+       и давали белое пятно вместо диска с оттенком. */
+    venus:   { name: 'Венера',  mag: -4.2, rgb: [242, 236, 214] },
+    jupiter: { name: 'Юпитер',  mag: -2.2, rgb: [238, 220, 188] },
+    saturn:  { name: 'Сатурн',  mag:  0.6, rgb: [232, 208, 164] },
+    mars:    { name: 'Марс',    mag:  1.0, rgb: [235, 172, 132] }
   };
 
   function helioXYZ(el, jd) {
@@ -968,34 +982,54 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
   }
 
   /* мягкое пятно млечного пути — пре-рендер один раз */
+  /* Пятно свечения Млечного Пути.
+     ВАЖНО: цвет намеренно ТУСКЛЫЙ (не белый). Раньше центр был почти белым
+     (214,224,255), а рисовался он в режиме сложения — десятки наложений
+     упирались в предел 255, и полоса Млечного Пути превращалась в сплошной
+     БЕЛЫЙ прямоугольник 325x47 (замер: 22040 чисто белых пикселей).
+     Теперь цвет тусклый, и рисуется он обычным наложением — наложения больше
+     не складываются, поэтому полоса НЕ может стать белой, сколько бы раз
+     ни перекрылась. */
   var BLOB = (function () {
     var c = document.createElement('canvas'); c.width = c.height = 64;
     var x = c.getContext('2d');
     var g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-    g.addColorStop(0, 'rgba(214,224,255,0.55)');
-    g.addColorStop(0.35, 'rgba(196,208,255,0.20)');
-    g.addColorStop(0.7, 'rgba(180,195,255,0.05)');
-    g.addColorStop(1, 'rgba(170,190,255,0)');
+    g.addColorStop(0, 'rgba(118,116,124,0.92)');
+    g.addColorStop(0.30, 'rgba(112,110,119,0.68)');
+    g.addColorStop(0.55, 'rgba(106,104,114,0.31)');
+    g.addColorStop(0.78, 'rgba(100,98,109,0.09)');
+    g.addColorStop(1, 'rgba(96,94,105,0)');
     x.fillStyle = g; x.fillRect(0, 0, 64, 64);
     return c;
   })();
 
   /* Млечный Путь: точки приходят с посчитанной яркостью (mw[i][2]),
      ярче всего — к центру Галактики и в Лебеде, темнее — у антицентра. */
+  /* Млечный Путь.
+     Рисуется ОБЫЧНЫМ наложением (source-over), а не сложением: тогда
+     многократные перекрытия не суммируются и полоса не может «выгореть»
+     до белого. Ярче всего к центру Галактики и в Лебеде (mw[i][2]). */
+  /* Млечный Путь.
+     Рисуется ОБЫЧНЫМ наложением (source-over): тогда перекрытия не
+     суммируются и полоса не может выгореть до белого.
+     Радиус пятна соразмерен реальной толщине полосы (6-11° по данным),
+     а не всему кадру — иначе 193 пятна заливают небо ровной светлой дымкой. */
   function drawMilkyWay(ctx, mw, proj, wpx) {
     if (!mw.length) return;
-    ctx.globalCompositeOperation = 'lighter';
+    var prev = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'source-over';
     for (var i = 0; i < mw.length; i++) {
       var p = proj(mw[i][0], mw[i][1]);
       if (!p) continue;
       var br = mw[i][2];
       if (br === undefined) br = 0.5;
-      var r = wpx * (0.40 + 0.85 * br);
-      ctx.globalAlpha = 0.16 + 0.42 * br;
+      /* толщина полосы берётся из данных: ярче -> шире, но в разумных пределах */
+      var r = wpx * (0.42 + 0.85 * br);
+      ctx.globalAlpha = clamp(0.16 + 0.40 * br, 0, 1);
       ctx.drawImage(BLOB, p[0] - r, p[1] - r, r * 2, r * 2);
     }
     ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalCompositeOperation = prev;
   }
 
   /* ---------- Спрайты звёзд ----------
@@ -1004,7 +1038,13 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
      неприемлемо. Поэтому звёзды заранее отрисованы в спрайты:
      27 цветов x 8 размеров, и дальше это просто drawImage. */
   var SPR = (function () {
-    var COLORS = 27, SIZES = 8, PX = 16;      // спрайт 16x16, рисуем с центром
+    /* Спрайт звезды = маленькая искра, а не пятно.
+       Раньше градиент занимал весь спрайт, и каждая звезда рисовалась
+       мягким диском. В плотных местах (Млечный Путь) тысячи таких дисков
+       сливались в сплошные белые полосы — до 578 px шириной. В реальности
+       даже в Млечном Пути звёзды остаются точками: глаз видит искры,
+       а не диски. Поэтому ядро резкое и крошечное, а свечение — едва заметное. */
+    var COLORS = 27, SIZES = 8, PX = 24;
     var arr = [];
     for (var c = 0; c < COLORS; c++) {
       var row = [];
@@ -1013,13 +1053,22 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         cv.width = cv.height = PX;
         var x = cv.getContext('2d');
         var rgb = BVC[c];
-        var rad = 1.0 + z * 0.85;             // радиус ядра, px
-        /* мягкое ядро + слабое свечение вокруг — как выглядит звезда глазом */
+        var cc = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',';
+        /* радиус ядра в пикселях спрайта: от 1.0 (пылинка) до 3.2 (яркая) */
+        /* Ядро маленькое и резкое, сияние слабое.
+           Спрайт 24 px и мягкий градиент давали ДЕВЯТЬ пикселей яркости
+           150+ подряд — на экране это читалось широким белым мазком,
+           тем самым «штрихом». Теперь ядро занимает 1-2 px, а всё
+           остальное — едва заметное сияние. */
+        var core = 0.75 + z * 0.20;
+        var stop1 = core / (PX / 2);
         var g = x.createRadialGradient(PX / 2, PX / 2, 0, PX / 2, PX / 2, PX / 2);
-        g.addColorStop(0, 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',1)');
-        g.addColorStop(0.16, 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0.85)');
-        g.addColorStop(0.34, 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0.22)');
-        g.addColorStop(1, 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',0)');
+        g.addColorStop(0, cc + '1)');
+        g.addColorStop(stop1, cc + '1)');                    // маленькое ровное ядро
+        g.addColorStop(Math.min(0.97, stop1 * 1.5), cc + '0.50)');
+        g.addColorStop(Math.min(0.985, stop1 * 2.4), cc + '0.17)');
+        g.addColorStop(Math.min(0.995, stop1 * 3.7), cc + '0.045)');
+        g.addColorStop(1, cc + '0)');
         x.fillStyle = g;
         x.beginPath(); x.arc(PX / 2, PX / 2, PX / 2, 0, TAU); x.fill();
         row.push(cv);
@@ -1034,20 +1083,26 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
     var v = (6.15 - mag) / 1.75;              // 6.15m..-0.6m -> 0..~3.9
     return clamp(Math.round(v * 2.1), 0, SPR.sizes - 1);
   }
-  /* размер на экране, px: слабые — одна точка, яркие — заметный диск */
+  /* Видимый размер звезды на экране, px.
+     Настоящая звезда — точка: даже Сириус это искра в пару пикселей.
+     Поэтому рост очень сдержанный, иначе небо превращается в кашу из пятен. */
   function starPixels(mag, scale) {
-    return clamp((6.15 - mag) * 0.62, 0.75, 3.6) * (scale || 1);
+    return clamp((6.15 - mag) * 0.36, 0.62, 2.05) * (scale || 1);
   }
 
   /* ореол яркой звезды */
+  /* Ореол яркой звезды. Раньше он был почти белым (255,255,255) и рисовался
+     в режиме сложения — вместе с ядром звезды это давало белые кляксы до
+     10x10 px. Теперь ореол тусклее и с легким голубым оттенком:
+     яркая звезда остаётся искрой с сиянием, а не белым пятном. */
   var HALO = (function () {
     var c = document.createElement('canvas'); c.width = c.height = 64;
     var x = c.getContext('2d');
     var g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-    g.addColorStop(0, 'rgba(255,255,255,0.85)');
-    g.addColorStop(0.22, 'rgba(255,255,255,0.30)');
-    g.addColorStop(0.55, 'rgba(255,255,255,0.06)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
+    g.addColorStop(0, 'rgba(206,218,255,0.50)');
+    g.addColorStop(0.20, 'rgba(198,210,252,0.20)');
+    g.addColorStop(0.50, 'rgba(190,202,248,0.05)');
+    g.addColorStop(1, 'rgba(186,198,244,0)');
     x.fillStyle = g; x.fillRect(0, 0, 64, 64);
     return c;
   })();
@@ -1119,11 +1174,11 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
           var sz2 = starPixels(s[2], 0.94);
           sc.globalAlpha = clamp((6.2 - s[2]) / 5.4, 0.12, 1) * ext;
           var spr2 = SPR.arr[s[3]][starSpriteSize(s[2])];
-          var rr2 = sz2 * 3.2;
+          var rr2 = sz2 * 1.35;
           sc.drawImage(spr2, p[0] - rr2, p[1] - rr2, rr2 * 2, rr2 * 2);
           if (s[2] < 1.6) {
-            var hr = sz2 * 7;
-            sc.globalAlpha = clamp((6.2 - s[2]) / 5.4, 0.12, 1) * ext * 0.8;
+            var hr = sz2 * 2.6;
+            sc.globalAlpha = clamp((6.2 - s[2]) / 5.4, 0.12, 1) * ext * 0.55;
             sc.drawImage(HALO, p[0] - hr, p[1] - hr, hr * 2, hr * 2);
           }
         }
@@ -1173,10 +1228,14 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
       ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.clip();
 
       /* млечный путь — статичный, рисуем поверх фона каждый кадр дёшево */
-      drawMilkyWay(ctx, scene.mw, proj, R * 0.24);
+      drawMilkyWay(ctx, scene.mw, proj, R * 0.10);
 
-      ctx.globalCompositeOperation = 'lighter';
+      /* Звёзды кладём ОБЫЧНЫМ наложением, а не сложением.
+         В режиме сложения звезда ложилась на уже светлый Млечный Путь,
+         сумма упиралась в 255 — и вместо искры получался белый мазок. */
+      ctx.globalCompositeOperation = 'source-over';
       ctx.drawImage(starLayer, 0, 0);
+      ctx.globalCompositeOperation = 'lighter';
       if (linesReady) {
         ctx.globalAlpha = consRev;
         ctx.drawImage(lineLayer, 0, 0);
@@ -1191,9 +1250,11 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         ext = Math.pow(Math.sin(clamp(ts[1], 0, 90) * D2R), 0.45);
         var tw = 0.5 + 0.5 * Math.sin(t * 0.0016 + i * 1.7);
         var sz2 = clamp((5.9 - ts[2]) * 0.62, 0.55, 3.1);
-        ctx.globalAlpha = 0.45 * tw * ext;
-        ctx.fillStyle = starColor(ts[3]);
-        ctx.beginPath(); ctx.arc(p[0], p[1], sz2 * 1.35, 0, TAU); ctx.fill();
+        ctx.globalAlpha = 0.34 * tw * ext;
+        var twcol = BVC[clamp(ts[3] | 0, 0, BVC.length - 1)];
+        ctx.fillStyle = 'rgb(' + Math.round(twcol[0] * 0.9) + ',' +
+          Math.round(twcol[1] * 0.9) + ',' + Math.round(twcol[2] * 0.92) + ')';
+        ctx.beginPath(); ctx.arc(p[0], p[1], sz2 * 1.15, 0, TAU); ctx.fill();
       }
 
       /* планеты — поверх всего: их было видно в ту ночь невооружённым глазом */
@@ -1205,8 +1266,8 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         ctx.globalAlpha = 0.96 * pu * clamp((rv - 0.5) / 0.2, 0, 1);
         ctx.fillStyle = 'rgb(' + pl.rgb[0] + ',' + pl.rgb[1] + ',' + pl.rgb[2] + ')';
         ctx.beginPath(); ctx.arc(p[0], p[1], pr, 0, TAU); ctx.fill();
-        var phr = pr * 9;
-        ctx.globalAlpha = 0.55 * pu * clamp((rv - 0.5) / 0.2, 0, 1);
+        var phr = pr * 5.5;                     /* ореол компактнее: прежний в 9 радиусов давал кляксу */
+        ctx.globalAlpha = 0.42 * pu * clamp((rv - 0.5) / 0.2, 0, 1);
         ctx.drawImage(HALO, p[0] - phr, p[1] - phr, phr * 2, phr * 2);
       }
       ctx.globalAlpha = 1;
@@ -1313,15 +1374,15 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
       bg.addColorStop(1, '#100b1a');
       x.fillStyle = bg; x.fillRect(0, 0, c.w, c.h);
 
-      x.globalCompositeOperation = 'lighter';
-      /* Млечный Путь: яркость каждой точки посчитана по её положению
-         относительно плоскости Галактики (ярче к центру и в Лебеде) */
+      /* Млечный Путь — обычным наложением, чтобы не выгорал до белого */
+      x.globalCompositeOperation = 'source-over';
       for (var i = 0; i < c.mwraw.length; i++) {
         var m = c.mwraw[i], br = m[2];
-        var r = c.pk * (0.5 + 0.9 * br);
-        x.globalAlpha = 0.12 + 0.30 * br;
+        var r = c.pk * (0.7 + 1.1 * br);
+        x.globalAlpha = clamp(0.30 + 0.55 * br, 0, 1);
         x.drawImage(BLOB, m[0] - r, m[1] - r, r * 2, r * 2);
       }
+      x.globalCompositeOperation = 'lighter';
       /* самые слабые — плоские точки, они дешёвые, рисуем сразу */
       for (i = 0; i < c.faint.length; i++) {
         var f = c.faint[i];
@@ -1342,10 +1403,10 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         var sz = starPixels(st[2]);
         x.globalAlpha = clamp((6.2 - st[2]) / 5.4, 0.18, 1) * ex2;
         var spr = SPR.arr[st[3]][starSpriteSize(st[2])];
-        var rr = sz * 3.2;
+        var rr = sz * 1.35;
         x.drawImage(spr, st[0] - rr, st[1] - rr, rr * 2, rr * 2);
         if (st[2] < 1.4) {
-          var hr = sz * 7;
+          var hr = sz * 3.4;
           x.globalAlpha = clamp((6.2 - st[2]) / 5.4, 0.18, 1) * ex2 * 0.7;
           x.drawImage(HALO, st[0] - hr, st[1] - hr, hr * 2, hr * 2);
         }
@@ -1400,8 +1461,8 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
           ctx.globalAlpha = 0.95 * pulse;
           ctx.fillStyle = 'rgb(' + pl[4] + ',' + pl[5] + ',' + pl[6] + ')';
           ctx.beginPath(); ctx.arc(pl[0], pl[1], pr, 0, TAU); ctx.fill();
-          var hr2 = pr * 8;
-          ctx.globalAlpha = 0.5 * pulse;
+          var hr2 = pr * 5;
+          ctx.globalAlpha = 0.40 * pulse;
           ctx.drawImage(HALO, pl[0] - hr2, pl[1] - hr2, hr2 * 2, hr2 * 2);
         }
         ctx.globalAlpha = 1;
@@ -1515,17 +1576,18 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
 
       var tmp = [0, 0];
 
-      x.globalCompositeOperation = 'lighter';
+      x.globalCompositeOperation = 'source-over';
       for (var i = 0; i < mwPts.length; i++) {
         var m = mwPts[i];
         var altM = Math.asin(clamp(m[1], -1, 1)) * R2D;
         var azM = Math.atan2(m[0], m[2]) * R2D;
         place(altM, azM, w, h, tmp);
         var br = m[3];
-        var mr = 14 + 26 * br;
-        x.globalAlpha = 0.10 + 0.26 * br;
+        var mr = 18 + 32 * br;
+        x.globalAlpha = clamp(0.30 + 0.55 * br, 0, 1);
         x.drawImage(BLOB, tmp[0] - mr, tmp[1] - mr, mr * 2, mr * 2);
       }
+      x.globalCompositeOperation = 'lighter';
       /* звёзды — порциями по CHUNK за кадр, чтобы первый показ не подвешивал
          страницу: 5070 звёзд разом давали заметный провал на телефоне */
       pendingIdx = 0;
@@ -1545,7 +1607,7 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         var sz = starPixels(st[3], 0.9);
         x.globalAlpha = clamp((6.2 - st[3]) / 5.4, 0.10, 0.95) * ext * 0.9;
         var sp = SPR.arr[st[4]][starSpriteSize(st[3])];
-        var rr2 = sz * 3.2;
+        var rr2 = sz * 1.3;
         x.drawImage(sp, tmp[0] - rr2, tmp[1] - rr2, rr2 * 2, rr2 * 2);
       }
       pendingIdx = end;
@@ -1624,18 +1686,20 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
       var lst = ((gmstDeg(julian(new Date())) + CFG.herLon) % 360 + 360) % 360;
       var sc = projectAll(CFG.herLat, lst);
 
-      x.globalCompositeOperation = 'lighter';
-      /* Млечный Путь — снизу, под звёздами */
+      /* Млечный Путь — ОБЫЧНЫМ наложением: в режиме сложения десятки
+         перекрытий упирались в белый и давали сплошную белую полосу */
+      x.globalCompositeOperation = 'source-over';
       for (var m = 0; m < PREC.mw.length; m++) {
         var mh = toHoriz(PREC.mw[m][0], PREC.mw[m][1], CFG.herLat, lst);
         if (mh[0] < -4) continue;
         var mp = ambientProject(mh[1], mh[0], w, h);
         if (!mp) continue;
         var br = PREC.mw[m][2] === undefined ? 0.5 : PREC.mw[m][2];
-        var mr = 16 + 30 * br;
-        x.globalAlpha = 0.10 + 0.24 * br;
+        var mr = 20 + 36 * br;
+        x.globalAlpha = clamp(0.30 + 0.55 * br, 0, 1);
         x.drawImage(BLOB, mp[0] - mr, mp[1] - mr, mr * 2, mr * 2);
       }
+      x.globalCompositeOperation = 'lighter';
       /* звёзды — спрайтами */
       for (var i = 0; i < sc.stars.length; i++) {
         var st = sc.stars[i];
@@ -1645,7 +1709,7 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         var sz = starPixels(st[2], 0.85);
         x.globalAlpha = clamp((6.2 - st[2]) / 5.4, 0.10, 0.9) * ext * 0.85;
         var sp = SPR.arr[st[3]][starSpriteSize(st[2])];
-        var rr = sz * 3.0;
+        var rr = sz * 1.3;
         x.drawImage(sp, p[0] - rr, p[1] - rr, rr * 2, rr * 2);
       }
       x.globalAlpha = 1;
