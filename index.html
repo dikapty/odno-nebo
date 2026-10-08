@@ -1774,6 +1774,20 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
     for (var i = 0; i < RENDERERS.length; i++) {
       var r = RENDERERS[i];
       if (!r.visible) continue;
+      if (r.slow) {
+        /* Медленный слой (небо за страницей): небу нужно обновляться раз в
+           минуту, а не 60 раз в секунду. Такой слой НЕ держит цикл
+           включённым — иначе телефон не уходил бы в покой вообще. */
+        if (t - (r._last || 0) >= 1000 / (r.fps || 1)) {
+          r._last = t;
+          try { r.fn(t); }
+          catch (e) {
+            r.visible = false;
+            if (window.console && console.warn) console.warn('renderer off:', e && e.message);
+          }
+        }
+        continue;
+      }
       if (r.fps && t - (r._last || 0) < 1000 / r.fps) { any = true; continue; }
       r._last = t;
       any = true;
@@ -2308,8 +2322,11 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
     var deepCv = document.querySelector('canvas[data-sky="deep"]');
     if (deepCv) {
       var deep = makeDeepSky(deepCv);
-      var rD = { visible: true, fps: 6, fn: deep };
+      var rD = { visible: true, slow: true, fps: 1 / 45, fn: deep };
       addRenderer(rD);
+      /* небо поворачивается меньше пикселя в минуту — будим его раз в 45 с,
+         чтобы оно не «застывало», пока цикл спит */
+      setInterval(function () { if (rD.visible) wake(); }, 45000);
     }
 
     var ambCv = document.querySelector('canvas[data-sky="ambient"]');
