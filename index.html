@@ -1360,7 +1360,10 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
       }
     }
 
+    function busy() { return baseLayer === null || pendingLayer !== null; }
+
     return {
+      busy: busy,
       draw: function (t) {
         var d = setupCanvas(cv), ctx = cv.getContext('2d'), i, p;
         if (!cache || t - lastProj > 95) project(t);
@@ -1455,6 +1458,12 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
   function makeDeepSky(cv) {
     var layer = null, key = '', lastBuild = -1e9;
     var stars = null, mwPts = null;
+    var pendingLayer = null, pendingIdx = 0, pendingW = 0, pendingH = 0, pendingDpr = 1;
+    var CHUNK = 1400;
+
+    /* пока слой собирается, цикл анимации должен работать — иначе первый
+       показ неба не завершится */
+    function busy() { return pendingLayer !== null || layer === null; }
 
     function collect() {
       var lst = ((gmstDeg(julian(new Date())) + CFG.herLon) % 360 + 360) % 360;
@@ -1476,13 +1485,25 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
       }
     }
 
-    /* сфера неба -> экран: сверху зенит, снизу горизонт, вращается по азимуту */
+    /* сфера неба -> экран: сверху зенит, снизу горизонт.
+       Поворот неба делается не здесь, а при выводе: проекция линейна по
+       азимуту, поэтому поворот слоя = поворот всей картинки. */
+    function place(alt, az, w, h, out) {
+      var rr = (90 - alt) / 96;
+      var rad = rr * (Math.max(w, h) * 0.72);
+      out[0] = w * 0.5 + rad * Math.sin(az * D2R);
+      out[1] = h * 0.46 - rad * Math.cos(az * D2R);
+      return out;
+    }
+
     function build(k, w, h, dpr, rot) {
       key = k;
-      layer = document.createElement('canvas');
-      layer.width = Math.round(w * dpr);
-      layer.height = Math.round(h * dpr);
-      var x = layer.getContext('2d');
+      pendingW = w; pendingH = h; pendingDpr = dpr;
+      pendingLayer = document.createElement('canvas');
+      pendingLayer.width = Math.round(w * dpr);
+      pendingLayer.height = Math.round(h * dpr);
+      pendingIdx = 0;
+      var x = pendingLayer.getContext('2d');
       x.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (!stars) collect();
 
@@ -1492,16 +1513,6 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
       bg.addColorStop(1, (cs.getPropertyValue('--bg-0') || '#05060f').trim());
       x.fillStyle = bg; x.fillRect(0, 0, w, h);
 
-      /* проекция: купол над головой, зенит вверху, поворот — сдвиг азимута */
-      var R = Math.max(w, h) * 0.72;
-      function place(alt, az, out) {
-        var a = (az + rot) * D2R;
-        var rr = (90 - alt) / 96;
-        var rad = rr * R;
-        out[0] = w * 0.5 + rad * Math.sin(a);
-        out[1] = h * 0.46 - rad * Math.cos(a);
-        return out;
-      }
       var tmp = [0, 0];
 
       x.globalCompositeOperation = 'lighter';
@@ -1509,17 +1520,26 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         var m = mwPts[i];
         var altM = Math.asin(clamp(m[1], -1, 1)) * R2D;
         var azM = Math.atan2(m[0], m[2]) * R2D;
-        place(altM, azM, tmp);
+        place(altM, azM, w, h, tmp);
         var br = m[3];
         var mr = 14 + 26 * br;
         x.globalAlpha = 0.10 + 0.26 * br;
         x.drawImage(BLOB, tmp[0] - mr, tmp[1] - mr, mr * 2, mr * 2);
       }
-      for (i = 0; i < stars.length; i++) {
+      /* звёзды — порциями по CHUNK за кадр, чтобы первый показ не подвешивал
+         страницу: 5070 звёзд разом давали заметный провал на телефоне */
+      pendingIdx = 0;
+    }
+
+    function stepBuild() {
+      var x = pendingLayer.getContext('2d');
+      var tmp = [0, 0], w = pendingW, h = pendingH;
+      var end = Math.min(stars.length, pendingIdx + CHUNK);
+      for (var i = pendingIdx; i < end; i++) {
         var st = stars[i];
         var alt = st[5], az = Math.atan2(st[0], st[2]) * R2D;
         if (alt < -3) continue;
-        place(alt, az, tmp);
+        place(alt, az, w, h, tmp);
         if (tmp[0] < -30 || tmp[0] > w + 30 || tmp[1] < -30 || tmp[1] > h + 30) continue;
         var ext = Math.pow(Math.sin(clamp(alt, 0, 90) * D2R), 0.5);
         var sz = starPixels(st[3], 0.9);
@@ -1528,16 +1548,22 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         var rr2 = sz * 3.2;
         x.drawImage(sp, tmp[0] - rr2, tmp[1] - rr2, rr2 * 2, rr2 * 2);
       }
-      x.globalAlpha = 1;
-      x.globalCompositeOperation = 'source-over';
+      pendingIdx = end;
+      if (pendingIdx >= stars.length) {
+        x.globalAlpha = 1;
+        x.globalCompositeOperation = 'source-over';
+        layer = pendingLayer;
+        pendingLayer = null;
+      }
     }
 
-    return function (t) {
+    function draw(t) {
       var d = setupCanvas(cv);
       var dpr = Math.min(window.devicePixelRatio || 1, 2);
       var theme = document.documentElement.getAttribute('data-theme') || 'gold';
       var k = theme + '|' + d.w + 'x' + d.h + '|' + dpr;
-      if (k !== key) build(k, d.w, d.h, dpr, 0);
+      if (k !== key && !pendingLayer) build(k, d.w, d.h, dpr, 0);
+      if (pendingLayer) stepBuild();
 
       /* Небо вращается по-настоящему, но пересобирать 5070 звёзд каждый кадр
          нельзя. Азимут входит в проекцию как (az + rot), значит поворот неба —
@@ -1551,6 +1577,13 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
       var ctx = cv.getContext('2d');
       var cx = d.w * 0.5, cy = d.h * 0.46;
       ctx.clearRect(0, 0, d.w, d.h);
+      if (!layer) {
+        /* слой ещё собирается (4 кадра) — показываем только фон */
+        var cs0 = getComputedStyle(document.documentElement);
+        ctx.fillStyle = (cs0.getPropertyValue('--bg-0') || '#05060f').trim();
+        ctx.fillRect(0, 0, d.w, d.h);
+        return;
+      }
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(rot * D2R);
@@ -1558,6 +1591,8 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
       ctx.drawImage(layer, 0, 0, d.w, d.h);
       ctx.restore();
     };
+    draw.busy = busy;
+    return draw;
   }
 
   /* =====================================================================
@@ -1777,8 +1812,20 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
       if (r.slow) {
         /* Медленный слой (небо за страницей): небу нужно обновляться раз в
            минуту, а не 60 раз в секунду. Такой слой НЕ держит цикл
-           включённым — иначе телефон не уходил бы в покой вообще. */
-        if (t - (r._last || 0) >= 1000 / (r.fps || 1)) {
+           включённым — иначе телефон не уходил бы в покой вообще.
+
+           Но пока слой ещё не готов (первый показ или пересборка), цикл
+           держим включённым, иначе небо могло не появиться до следующего
+           пробуждения таймера — это давало пустой экран почти на минуту. */
+        var wasBusy = r.busy && r.busy();
+        if (wasBusy) any = true;
+        /* Пока слой собирается — рисуем каждый кадр (нужно всего 4 кадра,
+           чтобы 5070 звёзд легли на место). Когда готов — почти не трогаем:
+           ограничение fps здесь и есть экономия батареи. Раньше одно и то же
+           ограничение действовало и на сборку, из-за чего небо появлялось
+           только через несколько минут. */
+        var need = wasBusy ? 0 : 1000 / (r.fps || 1);
+        if (t - (r._last || 0) >= need) {
           r._last = t;
           try { r.fn(t); }
           catch (e) {
@@ -1788,7 +1835,9 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         }
         continue;
       }
-      if (r.fps && t - (r._last || 0) < 1000 / r.fps) { any = true; continue; }
+      var bz = r.busy && r.busy();
+      var lim = (bz || !r.fps) ? 0 : 1000 / r.fps;
+      if (lim && t - (r._last || 0) < lim) { any = true; continue; }
       r._last = t;
       any = true;
       try { r.fn(t); }
@@ -2060,8 +2109,8 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
     var her = makeSkySlice(cvH, CFG.herLat, CFG.herLon);
     var me = makeSkySlice(cvM, CFG.myLat, CFG.myLon);
 
-    var rH = { visible: false, fn: function (t) { her.draw(t); } };
-    var rM = { visible: false, fn: function (t) { me.draw(t); } };
+    var rH = { visible: false, fn: function (t) { her.draw(t); }, busy: her.busy };
+    var rM = { visible: false, fn: function (t) { me.draw(t); }, busy: me.busy };
     addRenderer(rH); addRenderer(rM);
     watch(cvH, function (v) { rH.visible = v; if (v) wake(); });
     watch(cvM, function (v) { rM.visible = v; if (v) wake(); });
@@ -2322,7 +2371,7 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
     var deepCv = document.querySelector('canvas[data-sky="deep"]');
     if (deepCv) {
       var deep = makeDeepSky(deepCv);
-      var rD = { visible: true, slow: true, fps: 1 / 45, fn: deep };
+      var rD = { visible: true, slow: true, fps: 1 / 45, fn: deep, busy: deep.busy };
       addRenderer(rD);
       /* небо поворачивается меньше пикселя в минуту — будим его раз в 45 с,
          чтобы оно не «застывало», пока цикл спит */
