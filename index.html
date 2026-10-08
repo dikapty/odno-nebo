@@ -1795,8 +1795,11 @@ canvas.skybg{position:absolute;inset:0;width:100%;height:100%;z-index:0}
         if (!el || a.set === null || c.set === null) return;
         var secs = Math.round(Math.abs(c.set - a.set) * 86400);
         var who = (c.set > a.set) ? CFG.myCity : CFG.herCity;
+        /* название города ставим в именительный падеж, а не после «у»:
+           иначе при смене города получится «у Таганрог» — склонять
+           чужие названия автоматически нельзя */
         if (secs < 5) el.textContent = 'солнце садится у нас одновременно';
-        else el.textContent = 'закат у ' + who + ' позже на ' +
+        else el.textContent = who + ' — закат позже на ' +
           (secs < 60 ? secs + ' сек' : Math.round(secs / 60) + ' мин');
       }
       fill(elH, CFG.herLat, CFG.herLon);
