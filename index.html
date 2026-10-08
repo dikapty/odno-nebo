@@ -1291,13 +1291,21 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
     }
 
     /* Сборка неподвижного неба: фон, Млечный Путь, все 5070 звёзд.
-       Вызывается только когда небо повернулось (раз в ~1.5 с) или сменился размер. */
-    function buildBase(c) {
-      baseLayer = document.createElement('canvas');
-      baseLayer.width = Math.max(1, Math.round(c.w));
-      baseLayer.height = Math.max(1, Math.round(c.h));
-      baseW = c.w; baseH = c.h; baseAt = -1e9;
-      var x = baseLayer.getContext('2d');
+       Звёзды рисуются порциями по 1400 за кадр — иначе сборка занимала
+       до 29 мс подряд (на замедленном процессоре), и раз в 14.5 секунд
+       кадр проваливался. Теперь сборка идёт за 4 кадра и незаметна:
+       подмена слоя происходит, когда небо сместилось меньше пикселя. */
+    var pendingLayer = null, pendingCtx = null, pendingC = null, pendingIdx = 0;
+    var CHUNK = 1400;
+
+    function startBase(c) {
+      pendingC = c;
+      pendingIdx = 0;
+      pendingLayer = document.createElement('canvas');
+      pendingLayer.width = Math.max(1, Math.round(c.w));
+      pendingLayer.height = Math.max(1, Math.round(c.h));
+      var x = pendingLayer.getContext('2d');
+      pendingCtx = x;
 
       var bg = x.createLinearGradient(0, 0, 0, c.h);
       bg.addColorStop(0, '#03040c');
@@ -1314,7 +1322,7 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         x.globalAlpha = 0.12 + 0.30 * br;
         x.drawImage(BLOB, m[0] - r, m[1] - r, r * 2, r * 2);
       }
-      /* звёзды — спрайтами, с настоящими цветами из каталога */
+      /* самые слабые — плоские точки, они дешёвые, рисуем сразу */
       for (i = 0; i < c.faint.length; i++) {
         var f = c.faint[i];
         var extf = Math.pow(Math.sin(clamp(f[4], 0, 90) * D2R), 0.5);
@@ -1322,7 +1330,13 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         x.fillStyle = starColor(f[3]);
         x.fillRect(f[0], f[1], 1.1, 1.1);
       }
-      for (i = 0; i < c.stars.length; i++) {
+      x.globalAlpha = 1;
+    }
+
+    function stepBase(t) {
+      var x = pendingCtx, c = pendingC, n = c.stars.length;
+      var end = Math.min(n, pendingIdx + CHUNK);
+      for (var i = pendingIdx; i < end; i++) {
         var st = c.stars[i];
         var ex2 = Math.pow(Math.sin(clamp(st[4], 0, 90) * D2R), 0.5);
         var sz = starPixels(st[2]);
@@ -1336,8 +1350,14 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
           x.drawImage(HALO, st[0] - hr, st[1] - hr, hr * 2, hr * 2);
         }
       }
-      x.globalAlpha = 1;
-      x.globalCompositeOperation = 'source-over';
+      pendingIdx = end;
+      if (pendingIdx >= n) {
+        x.globalAlpha = 1;
+        x.globalCompositeOperation = 'source-over';
+        baseLayer = pendingLayer;
+        baseW = c.w; baseH = c.h; baseAt = t;
+        pendingLayer = null; pendingCtx = null; pendingC = null;
+      }
     }
 
     return {
@@ -1349,14 +1369,24 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         /* небо повернулось или сменился размер — пересобираем неподвижный слой.
            14500 мс: за это время суточное вращение сдвигает картинку меньше
            чем на пиксель, поэтому подмена незаметна. */
-        if (baseW !== c.w || baseH !== c.h || t - baseAt > 14500) {
-          buildBase(c);
-          baseAt = t;
+        /* небо повернулось или сменился размер — собираем новый слой.
+           14500 мс: за это время суточное вращение сдвигает картинку
+           меньше чем на пиксель, поэтому подмена незаметна. */
+        if ((baseW !== c.w || baseH !== c.h || t - baseAt > 14500) && !pendingLayer) {
+          startBase(c);
         }
+        if (pendingLayer) stepBase(t);
 
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = 1;
-        ctx.drawImage(baseLayer, 0, 0, c.w, c.h);
+        if (baseLayer) {
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 1;
+          ctx.drawImage(baseLayer, 0, 0, c.w, c.h);
+        } else {
+          /* самый первый кадр: слой ещё собирается, показываем только фон */
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.fillStyle = '#03040c';
+          ctx.fillRect(0, 0, c.w, c.h);
+        }
         ctx.globalCompositeOperation = 'lighter';
 
         /* планеты — поверх звёзд: заметный диск с ореолом */
@@ -1507,14 +1537,26 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
       var dpr = Math.min(window.devicePixelRatio || 1, 2);
       var theme = document.documentElement.getAttribute('data-theme') || 'gold';
       var k = theme + '|' + d.w + 'x' + d.h + '|' + dpr;
-      if (k !== key || t - lastBuild > 170000) {
-        /* медленный поворот неба: за 170 с азимут уходит примерно на градус */
-        build(k, d.w, d.h, dpr, (t * 0.0000035) % 360);
-        lastBuild = t;
-      }
+      if (k !== key) build(k, d.w, d.h, dpr, 0);
+
+      /* Небо вращается по-настоящему, но пересобирать 5070 звёзд каждый кадр
+         нельзя. Азимут входит в проекцию как (az + rot), значит поворот неба —
+         это ровно поворот готовой картинки вокруг центра проекции.
+         Поэтому слой строится один раз, а вращается при выводе: плавно и дёшево.
+         (Раньше слой пересобирался раз в 170 с — это давало заметный рывок
+         почти в 6 пикселей.) */
+      /* скорость взята точно: 360° за звёздные сутки (23 ч 56 мин 4 с),
+         то есть 0.0000041781 °/мс — небо вращается с настоящей скоростью */
+      var rot = (t * 0.0000041781) % 360;
       var ctx = cv.getContext('2d');
+      var cx = d.w * 0.5, cy = d.h * 0.46;
       ctx.clearRect(0, 0, d.w, d.h);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(rot * D2R);
+      ctx.translate(-cx, -cy);
       ctx.drawImage(layer, 0, 0, d.w, d.h);
+      ctx.restore();
     };
   }
 
