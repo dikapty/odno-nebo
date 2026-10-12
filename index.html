@@ -1055,19 +1055,22 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         var rgb = BVC[c];
         var cc = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',';
         /* радиус ядра в пикселях спрайта: от 1.0 (пылинка) до 3.2 (яркая) */
-        /* Ядро маленькое и резкое, сияние слабое.
-           Спрайт 24 px и мягкий градиент давали ДЕВЯТЬ пикселей яркости
-           150+ подряд — на экране это читалось широким белым мазком,
-           тем самым «штрихом». Теперь ядро занимает 1-2 px, а всё
-           остальное — едва заметное сияние. */
-        var core = 0.75 + z * 0.20;
+        /* Ядро + деликатное сияние.
+           Спрайт рисуется СИЛЬНО уменьшенным (2-10 px из 24), поэтому
+           ядро должно занимать заметную долю спрайта: слишком узкое ядро
+           при уменьшении исчезало совсем (замер: на экране 5 осталось
+           10 звёзд вместо 764). Здесь ядро ~40-65% радиуса — при
+           уменьшении оно даёт точку в 1-2 px, как настоящая звезда. */
+        var core = 3.9 + z * 0.40;
         var stop1 = core / (PX / 2);
         var g = x.createRadialGradient(PX / 2, PX / 2, 0, PX / 2, PX / 2, PX / 2);
-        g.addColorStop(0, cc + '1)');
-        g.addColorStop(stop1, cc + '1)');                    // маленькое ровное ядро
-        g.addColorStop(Math.min(0.97, stop1 * 1.5), cc + '0.50)');
-        g.addColorStop(Math.min(0.985, stop1 * 2.4), cc + '0.17)');
-        g.addColorStop(Math.min(0.995, stop1 * 3.7), cc + '0.045)');
+        /* ядро не чисто белое (0.93): в режиме сложения перекрытия иначе
+           снова упирались в 255 и давали белые кляксы */
+        g.addColorStop(0, cc + '0.93)');
+        g.addColorStop(stop1, cc + '0.91)');                 // ровное ядро
+        g.addColorStop(Math.min(0.97, stop1 * 1.12), cc + '0.40)');
+        g.addColorStop(Math.min(0.985, stop1 * 1.38), cc + '0.12)');
+        g.addColorStop(Math.min(0.995, stop1 * 1.80), cc + '0.030)');
         g.addColorStop(1, cc + '0)');
         x.fillStyle = g;
         x.beginPath(); x.arc(PX / 2, PX / 2, PX / 2, 0, TAU); x.fill();
@@ -1172,9 +1175,9 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
           p = proj(s[0], s[1]);
           ext = Math.pow(Math.sin(clamp(s[1], 0, 90) * D2R), 0.45);
           var sz2 = starPixels(s[2], 0.94);
-          sc.globalAlpha = clamp((6.2 - s[2]) / 5.4, 0.12, 1) * ext;
+          sc.globalAlpha = clamp((6.2 - s[2]) / 5.4, 0.30, 1) * ext;
           var spr2 = SPR.arr[s[3]][starSpriteSize(s[2])];
-          var rr2 = sz2 * 1.35;
+          var rr2 = sz2 * 2.30;
           sc.drawImage(spr2, p[0] - rr2, p[1] - rr2, rr2 * 2, rr2 * 2);
           if (s[2] < 1.6) {
             var hr = sz2 * 2.6;
@@ -1401,9 +1404,9 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         var st = c.stars[i];
         var ex2 = Math.pow(Math.sin(clamp(st[4], 0, 90) * D2R), 0.5);
         var sz = starPixels(st[2]);
-        x.globalAlpha = clamp((6.2 - st[2]) / 5.4, 0.18, 1) * ex2;
+        x.globalAlpha = clamp((6.2 - st[2]) / 5.4, 0.30, 1) * ex2;
         var spr = SPR.arr[st[3]][starSpriteSize(st[2])];
-        var rr = sz * 1.35;
+        var rr = sz * 2.40;
         x.drawImage(spr, st[0] - rr, st[1] - rr, rr * 2, rr * 2);
         if (st[2] < 1.4) {
           var hr = sz * 3.4;
@@ -1605,9 +1608,9 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         if (tmp[0] < -30 || tmp[0] > w + 30 || tmp[1] < -30 || tmp[1] > h + 30) continue;
         var ext = Math.pow(Math.sin(clamp(alt, 0, 90) * D2R), 0.5);
         var sz = starPixels(st[3], 0.9);
-        x.globalAlpha = clamp((6.2 - st[3]) / 5.4, 0.10, 0.95) * ext * 0.9;
+        x.globalAlpha = clamp((6.2 - st[3]) / 5.4, 0.28, 0.95) * ext * 0.9;
         var sp = SPR.arr[st[4]][starSpriteSize(st[3])];
-        var rr2 = sz * 1.3;
+        var rr2 = sz * 2.30;
         x.drawImage(sp, tmp[0] - rr2, tmp[1] - rr2, rr2 * 2, rr2 * 2);
       }
       pendingIdx = end;
@@ -1707,9 +1710,9 @@ canvas.deepsky{position:fixed;inset:0;width:100%;height:100%;z-index:-1;
         if (!p) continue;
         var ext = Math.pow(Math.sin(clamp(st[1], 0, 90) * D2R), 0.5);
         var sz = starPixels(st[2], 0.85);
-        x.globalAlpha = clamp((6.2 - st[2]) / 5.4, 0.10, 0.9) * ext * 0.85;
+        x.globalAlpha = clamp((6.2 - st[2]) / 5.4, 0.26, 0.9) * ext * 0.85;
         var sp = SPR.arr[st[3]][starSpriteSize(st[2])];
-        var rr = sz * 1.3;
+        var rr = sz * 2.20;
         x.drawImage(sp, p[0] - rr, p[1] - rr, rr * 2, rr * 2);
       }
       x.globalAlpha = 1;
